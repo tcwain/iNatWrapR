@@ -13,14 +13,19 @@ output:
 ```{r fileHistory, echo=FALSE, include=FALSE, eval=FALSE}
 # HISTORY:
 ## TCW 12.Jan.2024: Reorganized code to more sensible groupings
-## TCW 14.Jan.2024: Continued code reorganization
+## TCW 14.Jan.2024: Code cleanup.
 ```
   
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you
+execute code within the notebook, the results appear beneath the code. 
 
-**NOTE** that several of the executable chunks that make changes to iNaturalist data are marked with the option 'eval=FALSE' to prevent their execution. If you wish to run these, change the option in the chunk header to 'eval=TRUE'.
+**NOTE** that several of the executable chunks that make changes to 
+iNaturalist data are marked with the option 'eval=FALSE' to prevent 
+their execution. If you wish to run these, change the option in the 
+chunk header to 'eval=TRUE'.
   
-Based on code from James Mickley, https://github.com/mickley/flora-of-oregon-inat
+Based on code from James Mickley,
+https://github.com/mickley/flora-of-oregon-inat
 
 ```{r chunkOpts, echo=FALSE, include=FALSE}
 knitr::opts_chunk$set(fig.width=6, fig.height=9, dpi=150, 
@@ -86,8 +91,8 @@ members <- do.call(data.frame, out$data$results) %>%
 print(members)
 ```
 
-# Send messages
-## message to a single , with markdown formatting:
+# Messages
+## send message to a single user, with markdown formatting:
 
 Test account: @tw_test, id=7685867
 
@@ -106,17 +111,20 @@ This is a list:
 
 # Heading 2
 All finished."
+
 sendMsg <- function(toUID, subject, bodyText) {
   body <- toJSON(list(message = list(to_user_id = toUID, 
     subject = subject, body = bodyText)), auto_unbox = TRUE)
   return(iNatAPI("POST", "v1", "messages", authToken, body))
 } # sendMsg()
+
 out <- sendMsg(toUID, subj, txt)
 httr::content(out)
 ```
 
-## message to multiple users:
+## send message to multiple users:
 
+DEFAULT: Not run.
 ```{r msgToList, eval=FALSE}
 # 1st user doesn't exist, for error testing
 msgList <- c("xyz1234567890", "tw_test", "twainwright")
@@ -139,9 +147,9 @@ for (uname in msgList) {
 ##print(content(out))
 ```
 
-# Retrieve messages
+## Retrieve messages
 
-Returns first page of messages received by logged-in user (box="inbox") 
+Returns first page of messages received (box="inbox") by authenticated user 
 sent by user with user_id.
 
 **NOTE**: this takes either text or numeric user_ids.
@@ -152,7 +160,7 @@ rcvd <- content(out)
 print(rcvd$results[[1]][c('id', 'subject', 'thread_id', 'from_user')])
 ```
 
-Returns first page of messages sent by logged-in user (box="sent") to user_id.
+Returns first page of messages sent (box="sent") by authenticated user to user_id.
 
 ```{r getMsgsSent}
 out <- iNatAPI("GET", "v1", "messages", authToken, box="sent", 
@@ -161,35 +169,18 @@ sent <- content(out)
 print(sent$results[[1]][c('id', 'subject', 'thread_id', 'to_user')])
 ```
 
-# Delete message
+## Delete message thread
+
 Delete latest thread involving user_id in thread ID. 
 Status 200 means success, 404 means message does not exist.
 
 NOTE: this deletes the authenticated user's copies of all the messages in 
-the thread.
+the thread (does not affect other users copies).
+
+DEFAULT: Not run.
 ```{r delThread, eval=FALSE}
 ## WARNING: DO NOT RUN unless you want to delete messages
 out <- iNatAPI("DELETE", "v1", 
   paste0("messages/", sent$results[[1]]$thread_id), authToken)
 out
 ```
-
-# Get top 500 observers for the project
-out <- iNatAPI("GET", "v1", "observations/observers", authToken, 
-    captive = "false", project_id = 168279)
-out$data$results %>% do.call(data.frame, .) %>% 
-    select(user_id, observation_count, species_count, user.login, user.name)
-
-# Get top identifiers with v1 API
-out <- iNatAPI("GET", "v1", "identifications/identifiers", authToken, 
-    place_id = 10, observation_taxon_id = 211194, own_observation = "false", 
-    is_change = "false", per_page=100)
-out$data$results %>% do.call(data.frame, .) %>%
-    select(user_id, count, user.login, user.name)
-
-# Get top identifiers with v2 API
-out <- iNatAPI("GET", "v2", "identifications/identifiers", authToken, 
-    place_id = 10, observation_taxon_id = 211194, own_observation = "false", 
-    is_change = "false", per_page=100,
-    fields = "(count:!t,user:(login:!t,name:!t))")
-out$data$results %>% do.call(data.frame, .)
