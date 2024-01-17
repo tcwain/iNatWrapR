@@ -1,0 +1,195 @@
+---
+title: "iNat API examples, python version"
+date: 'Updated: `r Sys.Date()`'
+output:
+  html_document:
+    highlight: tango
+    self_contained: no
+    smart: no
+    theme: null
+  pdf_document:
+    highlight: tango
+---
+```{r fileHistory, echo=FALSE, include=FALSE, eval=FALSE}
+# HISTORY:
+## TCW 16.Jan.2024: Initiated python version
+```
+  
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you
+execute code within the notebook, the results appear beneath the code. 
+
+**NOTE** that several of the executable chunks that make changes to 
+iNaturalist data are marked with the option 'eval=FALSE' to prevent 
+their execution. If you wish to run these, change the option in the 
+chunk header to 'eval=TRUE'.
+  
+Based on code from James Mickley,
+https://github.com/mickley/flora-of-oregon-inat
+
+```{r chunkOpts, echo=FALSE, include=FALSE}
+knitr::opts_chunk$set(fig.width=6, fig.height=9, dpi=150, 
+               fig.show='as.is', warning=TRUE,
+               tidy.opts=list(keep.comment=TRUE, 
+                              keep.blank.line=TRUE, 
+                              width.cutoff=50))
+```
+
+# Needed libraries (packages)
+
+```{r R-init, include=FALSE}
+source("iNat-API.R") # Our iNaturalist API wrapper function
+# Packages
+library(httr) # For working with HTTP requests
+library(jsonlite) # For working with JSON
+library(dplyr) # For data wrangling
+```
+
+```{python py-init, include=FALSE}
+# Imports
+from pyinaturalist import *
+```
+
+# Authorize user
+Get API authorization token by going to this link and logging-in as yourself.
+
+https://www.inaturalist.org/users/api_token
+    
+then enter the token received into the line below (hidden in output).
+This token is only guaranteed to be valid for 24 hours.
+
+```{r R-auth-token, echo=FALSE}
+authToken <- "<<< Paste API token here >>>"
+py$authToken <- authToken
+```
+
+```{python}
+print(authToken)
+```
+
+Check that you are logged in (returns NULL if not authorized):
+```{r test_auth}
+out <- iNatAPI("GET", "v1", "users/me", authToken)
+rout <- httr::content(out) # Converts the JSON output to an R object
+myInfo <- rout$results[[1]]
+print(myInfo[c('id','login')])
+```
+
+# Explore Project Info
+
+Get Flora of Oregon project details.
+(Note: public info, no authToken needed.)
+```{r R-getProject}
+out <- iNatAPI("GET", "v1", "projects", 
+               q="flora of oregon vascular plants")
+#out <- iNatAPI("GET", "v1", "projects/168279", authToken)
+projInfo <- httr::content(out)$results[[1]]
+print(projInfo$title)
+```
+The following returns the first page (up to 200) of project members:
+(Note: public info, no authToken needed.)
+```{r getMembers}
+# Get a list of project members
+projUsers <- unlist(projInfo$user_ids)
+print(projUsers)
+# Get project members
+out <- iNatAPI("GET", "v1", "projects/168279/members", per_page = 200)
+## out$data$results
+# Dataframe of members
+members <- do.call(data.frame, out$data$results) %>% 
+    select(role, user.id, user.login, user.name, join_date = created_at)
+print(members)
+```
+
+# Messages
+## send message to a single user, with markdown formatting:
+
+Test account: @tw_test, id=7685867
+
+**NOTE**: this one requires a numeric user_id.
+
+DEFAULT: Not run.
+```{r sendTst, eval=FALSE}
+toUID <- 7685867
+subj <- "Test"
+txt <- "Test message from R, with *markdown* formatting.
+
+# Heading 1
+This is a list:
+* item
+* [Link to iNaturalist](https://www.inaturalist.org)
+
+# Heading 2
+All finished."
+
+sendMsg <- function(toUID, subject, bodyText) {
+  body <- toJSON(list(message = list(to_user_id = toUID, 
+    subject = subject, body = bodyText)), auto_unbox = TRUE)
+  return(iNatAPI("POST", "v1", "messages", authToken, body))
+} # sendMsg()
+
+out <- sendMsg(toUID, subj, txt)
+httr::content(out)
+```
+
+## send message to multiple users:
+
+DEFAULT: Not run.
+```{r msgToList, eval=FALSE}
+# 1st user doesn't exist, for error testing
+msgList <- c("xyz1234567890", "tw_test", "twainwright")
+msgSubj <- "Test to list"
+msgText <- "Testing message to list"
+
+for (uname in msgList) {
+  print(uname)
+  out <- content(iNatAPI("GET", "v1", "users/autocomplete", q=uname))
+  if (length(out$results) > 0) {uid=out$results[[1]]$id} else {uid=NULL}
+  out <- content(sendMsg(toUID=uid, subject=msgSubj, bodyText=msgText))
+  if("error" %in% names(out)) {
+    cat("Error:\n")
+    print(out$error)
+    } else {
+      print(out[c("user_id", "subject")])
+    } # if("error")
+  Sys.sleep(1) #pause to avoid overloading server
+} # for(uid)
+##print(content(out))
+```
+
+## Retrieve messages
+
+Returns first page of messages received (box="inbox") by authenticated user 
+sent by user with user_id.
+
+**NOTE**: this takes either text or numeric user_ids.
+```{r getMsgsRcvd}
+out <- iNatAPI("GET", "v1", "messages", authToken, box="inbox", 
+               user_id="tw_test")
+rcvd <- content(out)
+print(rcvd$results[[1]][c('id', 'subject', 'thread_id', 'from_user')])
+```
+
+Returns first page of messages sent (box="sent") by authenticated user to user_id.
+
+```{r getMsgsSent}
+out <- iNatAPI("GET", "v1", "messages", authToken, box="sent", 
+               user_id="tw_test")
+sent <- content(out)
+print(sent$results[[1]][c('id', 'subject', 'thread_id', 'to_user')])
+```
+
+## Delete message thread
+
+Delete latest thread involving user_id in thread ID. 
+Status 200 means success, 404 means message does not exist.
+
+NOTE: this deletes the authenticated user's copies of all the messages in 
+the thread (does not affect other users copies).
+
+DEFAULT: Not run.
+```{r delThread, eval=FALSE}
+## WARNING: DO NOT RUN unless you want to delete messages
+out <- iNatAPI("DELETE", "v1", 
+  paste0("messages/", sent$results[[1]]$thread_id), authToken)
+out
+```
